@@ -5,7 +5,7 @@
 ###########################################
 # Base image 
 ###########################################
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04 AS base
+FROM ubuntu:22.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -43,16 +43,16 @@ RUN sudo add-apt-repository universe \
   && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null \
   && apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-ros-base \
+    ros-iron-ros-base \
     python3-argcomplete \
   && rm -rf /var/lib/apt/lists/*
 
-ENV ROS_DISTRO=humble
-ENV AMENT_PREFIX_PATH=/opt/ros/humble
-ENV COLCON_PREFIX_PATH=/opt/ros/humble
-ENV LD_LIBRARY_PATH=/opt/ros/humble/lib
-ENV PATH=/opt/ros/humble/bin:$PATH
-ENV PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages
+ENV ROS_DISTRO=iron
+ENV AMENT_PREFIX_PATH=/opt/ros/iron
+ENV COLCON_PREFIX_PATH=/opt/ros/iron
+ENV LD_LIBRARY_PATH=/opt/ros/iron/lib
+ENV PATH=/opt/ros/iron/bin:$PATH
+ENV PYTHONPATH=/opt/ros/iron/lib/python3.10/site-packages
 ENV ROS_PYTHON_VERSION=3
 ENV ROS_VERSION=2
 ENV DEBIAN_FRONTEND=
@@ -109,7 +109,7 @@ FROM dev AS full
 ENV DEBIAN_FRONTEND=noninteractive
 # Install the full release
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  ros-humble-desktop \
+  ros-iron-desktop \
   && rm -rf /var/lib/apt/lists/*
 ENV DEBIAN_FRONTEND=
 
@@ -123,7 +123,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null \
   && apt-get update && apt-get install -q -y --no-install-recommends \
-    ros-humble-gazebo* \
+    ros-iron-gazebo* \
   && rm -rf /var/lib/apt/lists/*
 ENV DEBIAN_FRONTEND=
 

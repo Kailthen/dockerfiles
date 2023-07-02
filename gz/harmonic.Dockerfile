@@ -1,12 +1,13 @@
-##############################################
-# Created from template ros2.dockerfile.jinja
-##############################################
+##################################################
+# Created from template gz.dockerfile.jinja
+##################################################
 
 ###########################################
 # Base image 
 ###########################################
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04 AS base
+FROM ubuntu:22.04 AS base
 
+# Avoid warnings by switching to noninteractive
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install language
@@ -25,58 +26,19 @@ RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime \
   && dpkg-reconfigure --frontend noninteractive tzdata \
   && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get -y upgrade \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install common programs
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# install packages
+RUN apt-get update && apt-get install -q -y \
     curl \
-    gnupg2 \
+    gnupg \
     lsb-release \
-    sudo \
-    software-properties-common \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install ROS2
-RUN sudo add-apt-repository universe \
-  && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null \
-  && apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-ros-base \
     python3-argcomplete \
+    sudo \
+    wget \
+  && wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null \
+  && apt-get update && apt-get install -y -q \
+    gz-harmonic \
   && rm -rf /var/lib/apt/lists/*
-
-ENV ROS_DISTRO=humble
-ENV AMENT_PREFIX_PATH=/opt/ros/humble
-ENV COLCON_PREFIX_PATH=/opt/ros/humble
-ENV LD_LIBRARY_PATH=/opt/ros/humble/lib
-ENV PATH=/opt/ros/humble/bin:$PATH
-ENV PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages
-ENV ROS_PYTHON_VERSION=3
-ENV ROS_VERSION=2
-ENV DEBIAN_FRONTEND=
-
-###########################################
-#  Develop image 
-###########################################
-FROM base AS dev
-
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  bash-completion \
-  build-essential \
-  cmake \
-  gdb \
-  git \
-  openssh-client \
-  python3-argcomplete \
-  python3-pip \
-  ros-dev-tools \
-  vim \
-  && rm -rf /var/lib/apt/lists/*
-
-RUN rosdep init || echo "rosdep already initialized"
 
 ARG USERNAME=ros
 ARG USER_UID=1000
@@ -98,40 +60,67 @@ RUN apt-get update && apt-get install -y git-core bash-completion \
   && echo "if [ -f /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash ]; then source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash; fi" >> /home/$USERNAME/.bashrc \
   && rm -rf /var/lib/apt/lists/* 
 
-ENV DEBIAN_FRONTEND=
-ENV AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1
-
 ###########################################
-#  Full image 
+# Develop image 
 ###########################################
-FROM dev AS full
+FROM base AS dev
 
 ENV DEBIAN_FRONTEND=noninteractive
-# Install the full release
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  ros-humble-desktop \
+# Install dev tools
+RUN apt-get update && apt-get install -y \
+  python3-pip \
+  wget \
+  lsb-release \
+  gnupg \
+  curl \
+  && sudo sh -c 'echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros2-latest.list' \
+  && curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add - \
+  && sudo apt-get update \
+  && sudo apt-get install -y python3-vcstool python3-colcon-common-extensions \
+  git \
+  vim \
   && rm -rf /var/lib/apt/lists/*
-ENV DEBIAN_FRONTEND=
 
-###########################################
-#  Full+Gazebo image 
-###########################################
-FROM full AS gazebo
-
-ENV DEBIAN_FRONTEND=noninteractive
-# Install gazebo
-RUN wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
+WORKDIR /workspaces/gazebo/src
+# Get sources
+RUN wget https://raw.githubusercontent.com/gazebo-tooling/gazebodistro/master/collection-garden.yaml \
+  && vcs import < collection-garden.yaml \
+  # Get dependencies
+  && sudo wget https://packages.osrfoundation.org/gazebo.gpg -O /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
   && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null \
-  && apt-get update && apt-get install -q -y --no-install-recommends \
-    ros-humble-gazebo* \
-  && rm -rf /var/lib/apt/lists/*
+  && sudo apt-get update \
+  && sudo apt -y install \
+      $(sort -u $(find . -iname 'packages-'`lsb_release -cs`'.apt' -o -iname 'packages.apt' | grep -v '/\.git/') | sed '/gz\|sdf/d' | tr '\n' ' ')
+
 ENV DEBIAN_FRONTEND=
 
 ###########################################
-#  Full+Gazebo+Nvidia image 
+# Nvidia image 
 ###########################################
+FROM base AS nvidia
 
-FROM gazebo AS gazebo-nvidia
+################
+# Expose the nvidia driver to allow opengl 
+# Dependencies for glvnd and X11.
+################
+RUN apt-get update \
+ && apt-get install -y -qq --no-install-recommends \
+  libglvnd0 \
+  libgl1 \
+  libglx0 \
+  libegl1 \
+  libxext6 \
+  libx11-6
+
+# Env vars for the nvidia-container-runtime.
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES graphics,utility,compute
+ENV QT_X11_NO_MITSHM 1
+
+###########################################
+# Nvidia image 
+###########################################
+FROM dev AS nvidia-dev
 
 ################
 # Expose the nvidia driver to allow opengl 
